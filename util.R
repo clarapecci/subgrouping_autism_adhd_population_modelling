@@ -115,7 +115,7 @@ feature_analysis <- function(clustered_data_frame, results_directory){
   
   #List of features to iterate over
   feature_columns <- clustered_data_frame %>%
-    select(-c(ID, site, sex, dx.original, group), -contains('cluster'))  %>%
+    select(-c(ID, group), -contains('cluster'))  %>%
     colnames()
   
   
@@ -127,63 +127,56 @@ feature_analysis <- function(clustered_data_frame, results_directory){
   #Iterate over number of clusters
   for (x in cluster_list){
     
+    #Create file directory for given cluster
+    cluster_dir <- file.path(results_directory, x)
+    if (!file.exists(cluster_dir)){
+      dir.create(cluster_dir)
+    }
+    
     for (i in feature_columns){
-      
+
       print(i)
-      
+
       #If entire column is NA - skip
       if (all(is.na(clustered_data_frame[[i]]))){
         next
       }
       
-      #Create file directory for given cluster
-      cluster_dir <- file.path(results_directory, x)
-      if (!file.exists(cluster_dir)){ 
-        dir.create(cluster_dir)
+      if (i =='sex'|i =='site' | (i =='dx.original' & nlevels(factor(clustered_data_frame$dx.original))>1 )){
+        
+        stat_test <- chisq.test(clustered_data_frame[[i]], clustered_data_frame[[x]])
+        ggplot(clustered_data_frame, aes(fill=.data[[i]], x = .data[[x]])) +
+          geom_bar(position="dodge", stat="count") +
+          ggtitle(paste('X^2', stat_test$statistic, 'p value ', round(stat_test$p.value, digits = 6)))
+        
+      }else{
+
+      #Carry out statistical test according to variable type
+      stat_test <- kruskal.test(clustered_data_frame[[i]] ~clustered_data_frame[[x]],  data = clustered_data_frame)
+      ggplot(clustered_data_frame,
+             aes(x = factor(.data[[x]]), y = .data[[i]])) +
+        xlab('Clusters') +
+        geom_boxplot() +
+        ggtitle('p value ', stat_test$p.value)
+      
       }
       
-      #Calculate Kruskall Wallis
-      kruskal <- kruskal.test(clustered_data_frame[[i]] ~clustered_data_frame[[x]],  data = clustered_data_frame)
       
       #If p value is significant, include 'significant' directory
-      if (!is.na(kruskal$p.value) & kruskal$p.value < 0.005){
+      if (!is.na(stat_test$p.value) & stat_test$p.value < 0.005){
         saving_dir <- file.path(cluster_dir, "sig")
       } else{
         saving_dir <- cluster_dir
       }
-      
+
       #Attach feature name to saving directory
       filename <- file.path(saving_dir, paste(i, ".png", sep =""))
-      
-      #Create plot 
-      ggplot(clustered_data_frame,
-             aes(x = factor(.data[[x]]), y = .data[[i]])) +
-        xlab('Clusters') + 
-        geom_boxplot() 
+
+      #Create plot
       ggsave(filename)
-      
+
     }
     
-    #Create plot for sex
-    
-    filename <- file.path(saving_dir, paste("sex.png", sep =""))
-    ggplot(clustered_data_frame, aes(fill=sex, x = .data[[x]])) + 
-      geom_bar(position="dodge", stat="count")
-    ggsave(filename)
-    
-    #Create plots for site
-    filename <- file.path(saving_dir, paste("site.png", sep =""))
-    ggplot(clustered_data_frame, aes(fill=site, x = .data[[x]])) + 
-      geom_bar(position="dodge", stat="count")
-    ggsave(filename)
-    
-    #Create plot for diagnostic if using ADHD and ASD data
-    if (nlevels(factor(clustered_data_frame$dx.original))>1){
-      filename <- file.path(saving_dir, paste("diagnostic.png", sep =""))
-      ggplot(clustered_data_frame, aes(fill=dx.original, x = .data[[x]])) + 
-        geom_bar(position="dodge", stat="count")
-      ggsave(filename)
-    }
   }
   
 }
