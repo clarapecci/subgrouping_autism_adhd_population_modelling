@@ -3,17 +3,31 @@ library(tidyverse)
 library(R.matlab)
 library(ggalluvial)
 library(ggrepel)
+library(aricode)
+# TO DO IN SCRIPT:
+#   - add sustain
 
 
 #### LOAD FILE USED IN CLUSTERING!!
-data_used<-read_csv("data/ASD_all_features.csv")
-results_dir <- "results/ASD_all_features"
+#Data used
+data_used<-read_csv("data/ASD_ADHD_global_5-10.csv")
+#Directory where clustering assignments is saved
+results_dir <- "results/ASD_ADHD_5-10/"
+#Specify directory to save new plots
+saving_dir <- file.path(results_dir, 'new results')
+
+#Create directory to save results
+if (!file.exists(saving_dir)){ 
+  dir.create(saving_dir)
+}
 
 #### LOAD CLUSTERED DATA
-clustered_data <- readMat(file.path(results_dir, "ASD_all_features.mat"))
+#Open mat file in results directory
+clustered_data<- readMat(list.files(results_dir, pattern = "\\.mat$", full.names = TRUE))
 
-
-
+#Find number of clusters and create new column names
+number_clusters <- ncol(clustered_data$CIDX)
+cluster_columns <- paste("cluster", 2:ncol(clustered_data$CIDX), sep = "_")
 
 ###### COMBINE FEATURES IN SINGLE DATAFRAME
 #Load all clinical data + original features
@@ -33,27 +47,30 @@ non_clinical_features <- all_features_data %>%
   filter(ID %in% used_ID) %>%
   select(site, age, sex, IQ, dx.original, dx.original)
 
-#Append clusters to data - no need to include first column as that distinguishes control from patient
-combined_data <- data_used%>%
-  mutate(cluster_2 = clustered_data$CIDX[,2])%>%
-  mutate(cluster_3 = clustered_data$CIDX[,3])%>%
-  #mutate(cluster_4 = clustered_data$CIDX[,4])%>%
-  #mutate(cluster_5 = clustered_data$CIDX[,5])%>%
+#Concatenate with cluster assignment
+for (i in 1:(number_clusters - 1)) {
+  data_used[, cluster_columns[i]] <- clustered_data$CIDX[, i + 1]
+}
+
+#Combine with features
+combined_data <- data_used %>%
   cbind(clinical_features)%>%
   cbind(non_clinical_features)%>%
   filter(dx.original !='CN')
-
+  
 ##############ALLUVIAL PLOT ###########
 
-filename <- file.path(results_dir, 'HYDRA_clusters.png')
-ggplot(combined_data,
-       aes(y = stat(count), axis1 = cluster_2, axis2 = cluster_3)) +
-  geom_alluvium(width = 1/12) +
-  geom_stratum(width = 1/12, fill = "black", color = "grey") +
-  scale_x_discrete(limits = c("cluster_2", "cluster_3"), expand = c(.05, .05)) 
-  #geom_label_repel(stat = "stratum",  box.padding = 0.5, point.padding = 0.1, position = position_nudge_repel(y = 0.5), aes(label = after_stat(stratum)))  
-ggsave(filename)
+filename <- file.path(saving_dir, 'HYDRA_clusters.png')
 
+#Create list of axis based on cluster columns
+axis_list <- map(setNames(cluster_columns, paste0("axis", seq_along(cluster_columns))), ~ sym(.x))
+
+# Create the ggplot with axis_list
+ggplot(combined_data, aes(y = stat(count), !!!axis_list)) +
+      geom_alluvium(width = 1/12) +
+       geom_stratum(width = 1/12, fill = "black", color = "grey") +
+       scale_x_discrete(limits = unlist(cluster_columns), expand = c(.05, .05))
+ggsave(filename)
 
 ###### CHECK FOR TSNE
 #Check if directory contains tsne file 
@@ -61,9 +78,14 @@ if (file.exists(file.path(results_dir, 'tsne_medoids'))){
   
   #Open tsne clustering with no control
   tsne_clustering <- read_csv(file.path(results_dir, 'tsne_medoids', 'control_FALSE', 'tsne_medoids_clustering.csv'))
-
+  
+  #Check IDs are the samw across HYDRA and tSNE
+  stopifnot(tsne_clustering$ID == combined_data$ID)
+  
   #Find number of clusters 
   cluster_number_tsne <- nlevels(factor(tsne_clustering$cluster_tsne))
+  
+  #Find equivalent number of clusters in HYDRA
   cluster_number_tsne <- paste0('cluster_', cluster_number_tsne)
   
   #If number of clusters match
@@ -73,12 +95,20 @@ if (file.exists(file.path(results_dir, 'tsne_medoids'))){
     combined_data <- combined_data %>%
       mutate(cluster_tsne = tsne_clustering$cluster_tsne)
     
-    compare_plot_dir <- file.path(results_dir, 'comparison_plot.png')
+    #Create directory to save new plot
+    compare_plot_dir <- file.path(saving_dir, 'comparison_plot.png')
+    
+    #Calculate mutual information
+    NMI_clustering <-NMI(combined_data[[cluster_number_tsne]], combined_data$cluster_tsne)
+    
+    #Alluvial plot across techniques
     ggplot(combined_data,
            aes(y = stat(count), axis1 = .data[[cluster_number_tsne]], axis2 = cluster_tsne)) +
       geom_alluvium(width = 1/12) +
       geom_stratum(width = 1/12, fill = "black", color = "grey") +
-      scale_x_discrete(limits = c("HYDRA", "TSNE"), expand = c(.05, .05)) 
+      scale_x_discrete(limits = c("HYDRA", "TSNE"), expand = c(.05, .05)) +
+      ggtitle('NMI ', NMI_clustering)
+    
     ggsave(compare_plot_dir)
     
     
