@@ -6,6 +6,7 @@ library(Rtsne)
 library(fpc)
 library(dplyr)
 library(cluster)
+library(umap)
 
 ################## START OF FUNCTION ###################
 #Functions takes name of csv file and returns processed data frame where it can select what type of patient (ASD, ADHD, both), in what window age, and what number of samples (crop)
@@ -80,23 +81,42 @@ preprocess_data <- function (csv_file, patient, min_age = NULL, max_age = NULL ,
 
 ################## START OF FUNCTION ###################
 
-#Function to carry out tSNE dimensionality reduction and clustering with respect to first two embeddings. 
-#Input: data frame of only features
+#Function to carry out tSNE or UMAP dimensionality reduction and clustering with respect to first two embeddings. 
+#Input: data frame of only features, method = 'tsne' or 'umap' to decide on dimensionality reduction type
 #Output: first two embedding, cluster assignment 
-tsne_k_medoids <- function(data){
-  # run tsne to reduce to 2 dimensions
-  sm.tsne <- Rtsne(as.matrix(data), check_duplicates=FALSE, pca=TRUE, perplexity=30, theta=0.5, dims=2)
-  # extract the distance matrix from the tsne
-  t.dist <- as.matrix(dist(sm.tsne$Y))
+tsne_k_medoids <- function(data, method){
+  
+  #Apply dimensionality reduction
+  if (method =='tsne'){
+    print('tSNE method chosen... applying dimensionality reduction')
+    # run tsne to reduce to 2 dimensions
+    sm.tsne <- Rtsne(as.matrix(data), check_duplicates=FALSE, pca=TRUE, perplexity=30, theta=0.5, dims=2)
+    embeddings <- sm.tsne$Y
+  } else if (method =='umap'){
+    print('UMAP method chosen... applying dimensionality reduction')
+    umap_data <- umap(data)
+    embeddings <- umap_data$layout
+  }else{
+    print('Method must be either tsne or umap')
+    return ()
+  }
+  
+  # extract the distance matrix from the dimensionality reduction
+  t.dist <- as.matrix(dist(embeddings))
+  
   # run partitioning around medoids with silhouette estimation to get the number of optimal clusters
+  print('Finding optima number of clusters ....')
   pamk.best <- pamk(t.dist)
+  
   # run PAM with that number of clusters
+  print('Running partinioning around medoids...')
   pam.res <- pam(t.dist, pamk.best$nc)
+  
   # put the cluster in a separate variable
   groups <- as.data.frame(pamk.best$pamobject$clustering)
   groups <- as.data.frame(pam.res$clustering)
   
-  return(list(sm.tsne$Y, groups))
+  return(list(embeddings, groups))
   
 }
 
