@@ -4,93 +4,83 @@ library(corrr)
 library(tidytext)
 library(ggplot2)
 library(recipes)
-source("preprocessing_script.R")
+source("util.R")
+library(FactoMineR)
 
+
+#1.1 Generate data from original csv
 #Parameters
-patient = 'both'
-crop = NULL
-min_age = NULL
-max_age = NULL
-new_data_filename = NULL #"data/TEST"
+# patient = 'both'
+# crop = NULL
+# min_age = NULL
+# max_age = NULL
+# new_data_filename = NULL #"data/TEST"
+# 
+# file <- "data/combat_centile_ID.csv"
+# patient_data <- preprocess_data(csv_file = file, patient = patient, min_age = min_age, max_age = max_age, crop = crop, saving_dir = new_data_filename )%>%
+#   select(-c(1))%>%
+#   select(!c(session, run, age_days, dx, surfholes, FSQC))
 
-file <- "data/combat_centile_ID.csv"
-patient_data <- preprocess_data(csv_file = file, patient = patient, min_age = min_age, max_age = max_age, crop = crop, saving_dir = new_data_filename )%>%
-  select(-c(1))%>%
-  select(!c(session, run, age_days, dx, surfholes, FSQC))
+#1.2 Open csv directly
+patient_data <-read_csv("data/ASD_all_features.csv")
 
+#1.3 Saving directory 
+saving_dir <- 'figures/ASD_all_pca'
+
+#2. Select global features 
 global_feature_data<-patient_data %>%
   select( contains('GMV'), WMVTransformed.q.wre, VentriclesTransformed.q.wre, totalSA2Transformed.q.wre, meanCT2Transformed.q.wre)
 
+###### COMBINE FEATURES IN SINGLE DATAFRAME
+#Load all clinical data + original features
+clinical_data <-read_csv("data/clinical_data_ID.csv")[-c(1)]
+all_features_data <- read_csv("data/combat_centile_ID.csv")[-c(1)]
 
+#Check IDs used in clustering to extract desired features from original + clinical data
+used_ID <- patient_data$ID
 
-pca_recipe <-
-  # take all variables
-  recipe(~ ., data = patient_data) %>% 
-  # specify the ID columns (non-numerical)
-  update_role(participant, site, study, group, sex, age, diagnostic, IQ, new_role = 'id') %>% 
-  # remove missing values
-  step_naomit(all_predictors()) %>% 
-  # perform the PCA
-  step_pca(all_predictors(), id = "pca") %>% 
-  # prepares the recipe by estimating the required parameters
-  prep()
+#Extract correct clinical features
+clinical_features <- clinical_data %>% 
+  filter(ID %in% used_ID) %>%
+  select (-c(participant, site, dx.original, sex, ID))
 
-patient_pca <- 
-  pca_recipe %>% 
-  tidy(id = "pca") 
+#Extract non clinical features not used in clustering
+non_clinical_features <- all_features_data %>% 
+  filter(ID %in% used_ID) %>%
+  select(site, age, sex, IQ, dx.original, dx.original)
 
-patient_pca
+#Combine clinical and non clinical features
+patient_data <- patient_data %>%
+  cbind(clinical_features)%>%
+  cbind(non_clinical_features)
 
-pca_recipe %>% 
-  tidy(id = "pca", type = "variance") %>% 
-  filter(terms == "percent variance") %>% 
-  ggplot(aes(x = component, y = value)) + 
-  geom_col() + 
-  xlim(c(0, 5)) +
-  ylab("% of total variance")
-
-#Transforms data to PC
-patient_transform_data <- bake(pca_recipe, new_data = NULL)
-ggplot(patient_transform_data, aes(x = PC1, y = PC2, color = sex)) +
-  geom_point() +
-  labs(title = "PCA",
-       x = "Principal Component 1",
-       y = "Principal Component 2")
 
 ###############
-#Global feature
-global_recipe <-
-  # take all variables
-  recipe(~ ., data = global_feature_data) %>% 
-  # specify the ID columns (non-numerical)
-  # perform the PCA
-  step_pca(all_predictors(), id = "pca") %>% 
-  # prepares the recipe by estimating the required parameters
-  prep()
 
-global_pca <- 
-  global_recipe %>% 
-  tidy(id = "pca") 
+fill ='site'
 
-global_pca
+pca_result <- PCA(global_feature_data, scale.unit = FALSE)
 
-global_pca %>% 
-  tidy(id = "pca", type = "variance") %>% 
-  filter(terms == "percent variance") %>% 
-  ggplot(aes(x = component, y = value)) + 
-  geom_col() + 
-  xlim(c(0, 5)) +
-  ylab("% of total variance")
+patient_data_combined <- patient_data%>%
+  mutate(PC1 = pca_result$ind$coord[, 1])%>%
+  mutate(PC2 = pca_result$ind$coord[, 2])
+  
+ggplot(patient_data_combined, aes(x = PC1, y = PC2, color = !!sym(fill))) +
+  geom_point() + #scale_color_gradient(low = "blue", high = "red") +
+  labs(title = "Scatter Plot", x = "PC1", y = "PC2")
 
-#Transforms data to PC
-global_transform_data <- bake(global_recipe, new_data = NULL)
-ggplot(global_transform_data, aes(x = PC1, y = PC2)) +
-  geom_point() +
-  labs(title = "PCA",
-       x = "Principal Component 1",
-       y = "Principal Component 2")
+ggsave(file.path(paste0(saving_dir, '_', fill, '.png')))
 
 
+#Find which features carry most variance per principal component
+# Extract loadings for the first principal component
+loadings_pc1 <- pca_result$var$coord[, 2]
+
+# Identify features with the highest absolute loadings
+top_features_pc1 <- names(sort(abs(loadings_pc1), decreasing = TRUE))
+
+# Display the top features for the first principal component
+print(top_features_pc1)
 
 
 
