@@ -5,11 +5,19 @@ source('util.R')
 
 
 #### LOAD FILE USED IN CLUSTERING!!
-data_used<-read_csv("data/ASD_global_features.csv")
-results_dir <- "results/tsne_medoids/ASD_global/"
-#### LOAD CLUSTERED DATA
-clustered_data <- readMat(file.path(results_dir, "ASD_ADHD_17-22_results.mat"))
+data_used<-read_csv("data/ADHD_all_features.csv")
+results_dir <- "results/ADHD_all_features/"
 
+include_control = FALSE
+
+#### LOAD CLUSTERED DATA
+#Open mat file in results directory
+clustered_data<- readMat(list.files(results_dir, pattern = "\\.mat$", full.names = TRUE))
+
+#Find number of clusters used
+number_clusters <- ncol(clustered_data$CIDX)
+#Create columns to append to data
+cluster_columns <- paste("cluster", 2:ncol(clustered_data$CIDX), sep = "_")
 
 ###### COMBINE FEATURES IN SINGLE DATAFRAME
 #Load all clinical data + original features
@@ -29,26 +37,30 @@ non_clinical_features <- all_features_data %>%
   filter(ID %in% used_ID) %>%
   select(site, age, sex, IQ, dx.original, dx.original)
 
-#Combine clinical and non clinical features
+
+#Append clustered data
+for (i in 1:(number_clusters - 1)) {
+  data_used[, cluster_columns[i]] <- clustered_data$CIDX[, i + 1]
+}
+
+
+#Combine clinical and non clinical features + remove control patients
 data_used <- data_used %>%
   cbind(clinical_features)%>%
   cbind(non_clinical_features)
-  
+
+#Remove control from analysis
+if (include_control == FALSE){
+  data_used <- data_used%>%
+    filter(dx.original !='CN') 
+}
 
 
 ############## RUN HYDRA CLUSTERS ##############
 
-#Append clusters to data - no need to include first column as that distinguishes control from patient
-combined_data <- data_used%>%
-  mutate(cluster_2 = clustered_data$CIDX[,2])%>%
-  mutate(cluster_3 = clustered_data$CIDX[,3])%>% 
-  mutate(cluster_4 = clustered_data$CIDX[,4])%>%
-  mutate(cluster_5 = clustered_data$CIDX[,5])%>%
-  filter(dx.original !='CN')
-
 
 #Run feature analysis on clustered data
-feature_analysis(combined_data, results_dir)
+feature_analysis(data_used, results_dir)
 
 
 
