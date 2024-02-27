@@ -100,23 +100,26 @@ tsne_k_medoids <- function(data, method){
     print('Method must be either tsne or umap')
     return ()
   }
-  
+
   # extract the distance matrix from the dimensionality reduction
   t.dist <- as.matrix(dist(embeddings))
   
   # run partitioning around medoids with silhouette estimation to get the number of optimal clusters
-  print('Finding optima number of clusters ....')
-  pamk.best <- pamk(t.dist)
+  print('Finding optimal number of clusters ....')
+  pamk.best <- pamk(t.dist, critout = TRUE)
   
+  criterion <- pamk.best$crit
   # run PAM with that number of clusters
-  print('Running partinioning around medoids...')
-  pam.res <- pam(t.dist, pamk.best$nc)
+  print('Running partitioning around medoids...')
+  
+  pam.res <- pamk.best$pamobject
+  #pam.res <- pam(t.dist, pamk.best$nc)
   
   # put the cluster in a separate variable
   groups <- as.data.frame(pamk.best$pamobject$clustering)
   groups <- as.data.frame(pam.res$clustering)
   
-  return(list(embeddings, groups))
+  return(list(embeddings, groups, criterion))
   
 }
 
@@ -202,3 +205,38 @@ feature_analysis <- function(clustered_data_frame, results_directory){
 }
 
 ############## END OF FUNCTION #####################
+
+##############START OF FUNCTION ###################
+#Find number and type of significant features for given clustering
+find_sig_features <- function(results_dir, data_used, clinical_features, non_clinical_features){
+  
+  #Check if any features are significant
+  sig_dir <- file.path(results_dir, 'sig')
+  if (file.exists(sig_dir)){
+    
+    #Find significant features
+    all_files <- list.files(sig_dir, pattern = ".png", full.names = FALSE)
+    
+    #Obtain name of significant features
+    variable_names <- gsub(".png", "", basename(all_files))
+    
+    #Count anatomical features
+    anatomical_count <- length(intersect(variable_names, colnames(data_used)))
+    
+    #Count clinical features
+    clinical_count <- length(intersect(variable_names, colnames(clinical_features)))
+    
+    #Count non clinical features
+    non_clinical_count <- length(intersect(variable_names, colnames(non_clinical_features)))
+    
+    #Print number of features 
+    print('Significant features...')
+    print(paste("Anatomical:", anatomical_count))
+    print(paste('Clinical:', clinical_count))
+    print(paste('Non clinical: ', non_clinical_count))
+  }else{
+    print('No significant features')
+  }
+  
+  
+}
