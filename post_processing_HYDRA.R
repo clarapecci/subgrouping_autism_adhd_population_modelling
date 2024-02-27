@@ -5,10 +5,10 @@ source('util.R')
 
 
 #### LOAD FILE USED IN CLUSTERING!!
-data_used<-read_csv("data/ADHD_all_features.csv")
-results_dir <- "results/ADHD_all_features/"
-
-include_control = FALSE
+data_used<-read_csv("data/ASD_all_features.csv")
+results_dir <- "results/ASD_all_features/"
+saving_dir <- file.path(results_dir, 'include_control')
+include_control = TRUE
 
 #### LOAD CLUSTERED DATA
 #Open mat file in results directory
@@ -43,7 +43,6 @@ for (i in 1:(number_clusters - 1)) {
   data_used[, cluster_columns[i]] <- clustered_data$CIDX[, i + 1]
 }
 
-
 #Combine clinical and non clinical features + remove control patients
 data_used <- data_used %>%
   cbind(clinical_features)%>%
@@ -60,8 +59,15 @@ if (include_control == FALSE){
 
 
 #Run feature analysis on clustered data
-feature_analysis(data_used, results_dir)
+#feature_analysis(data_used, saving_dir)
 
 
+##Check significant features of optimal cluster!
+highest_ARI_cluster <- which.max(clustered_data$ARI)
+
+#Specify folder to check
+cluster_dir <- file.path(paste0(results_dir, cluster_columns[highest_ARI_cluster - 1]))
+#Find type of significant features
+find_sig_features(cluster_dir, data_used, clinical_features, non_clinical_features )
 
   

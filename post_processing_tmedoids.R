@@ -3,13 +3,15 @@ library(tidyverse)
 
 source('util.R')
 
+### TO CHANGE BETWEEN umap <-> umap, replace words in script
+
 
 #### LOAD FILE USED IN CLUSTERING!!
-data_used<-read_csv("data/ASD_global_features.csv")
-results_dir <- "results/tsne_medoids/ASD_all_features/control_TRUE"
+data_used<-read_csv("data/ASD_ADHD_all.csv")
+results_dir <- "results/ASD_ADHD_all/umap_medoids/control_FALSE"
 
 #### LOAD CLUSTERED DATA
-clustered_data <- read_csv(file.path(results_dir, "tsne_medoids_clustering.csv"))
+clustered_data <- read_csv(file.path(results_dir, "umap_medoids_clustering.csv"))
 
 ###### COMBINE FEATURES IN SINGLE DATAFRAME
 #Load all clinical data + original features
@@ -36,13 +38,18 @@ data_used <- data_used %>%
   cbind(non_clinical_features)
 
 
-
-############## RUN FOR TSNE CLUSTERING ########
+############## RUN FOR umap CLUSTERING ########
 
 #Append clusters 
-tsne_feature_data <- data_used %>%
-  mutate(cluster = clustered_data$cluster_tsne)%>%
+umap_feature_data <- data_used %>%
+  mutate(cluster = clustered_data$cluster_umap)%>%
   filter(dx.original !='CN')
 
 #Run feature analysis
-feature_analysis(tsne_feature_data, results_dir)
+#feature_analysis(umap_feature_data, results_dir)
+
+##Check significant features!
+#Specify folder to check
+cluster_dir <- file.path(results_dir, 'cluster')
+#Find type of significant features
+find_sig_features(cluster_dir, data_used, clinical_features, non_clinical_features )
