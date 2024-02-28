@@ -180,6 +180,7 @@ feature_analysis <- function(clustered_data_frame, results_directory){
              aes(x = factor(.data[[x]]), y = .data[[i]])) +
         xlab('Clusters') +
         geom_boxplot() +
+        geom_point(aes(color = GMVTransformed.q.wre), position = 'jitter') +  scale_color_gradient(low = "blue", high = "red")  + 
         ggtitle('p value ', stat_test$p.value)
       
       }
@@ -220,8 +221,11 @@ find_sig_features <- function(results_dir, data_used, clinical_features, non_cli
     #Obtain name of significant features
     variable_names <- gsub(".png", "", basename(all_files))
     
+    #Find anatomical features
+    anatomical_features <- data_used%>% select(contains('q.wre')) %>%colnames
+    
     #Count anatomical features
-    anatomical_count <- length(intersect(variable_names, colnames(data_used)))
+    anatomical_count <- length(intersect(variable_names, anatomical_features))
     
     #Count clinical features
     clinical_count <- length(intersect(variable_names, colnames(clinical_features)))
@@ -230,13 +234,45 @@ find_sig_features <- function(results_dir, data_used, clinical_features, non_cli
     non_clinical_count <- length(intersect(variable_names, colnames(non_clinical_features)))
     
     #Print number of features 
-    print('Significant features...')
+    print(paste('Significant features in ...', sig_dir))
     print(paste("Anatomical:", anatomical_count))
     print(paste('Clinical:', clinical_count))
     print(paste('Non clinical: ', non_clinical_count))
   }else{
-    print('No significant features')
+    print(paste('No significant features in ...', sig_dir))
   }
   
   
 }
+
+
+###########START OF FUNCTION ######################
+#Concatenate features used in clustering with all clincal and non clinical features for analysis
+append_all_features <- function(data_used){
+  
+  #Load all clinical data
+  clinical_data <-read_csv("data/clinical_data_ID.csv")[-c(1)]
+  all_features_data <- read_csv("data/combat_centile_ID.csv")[-c(1)]
+  
+  #Check IDs used in clustering to extract desired features from original + clinical data
+  used_ID <- data_used$ID
+  
+  #Extract correct clinical features
+  clinical_features <- clinical_data %>% 
+    filter(ID %in% used_ID) %>%
+    select (-c(participant, site, dx.original, sex, ID))
+  
+  #Extract non clinical features not used in clustering
+  non_clinical_features <- all_features_data %>% 
+    filter(ID %in% used_ID) %>%
+    select(site, age, sex, IQ, dx.original)
+  
+  #Append features
+  combined_data <- data_used %>%
+    cbind(clinical_features)%>%
+    cbind(non_clinical_features)
+  
+  return(combined_data)
+}
+###########END OF FUNCTION ######################
+
