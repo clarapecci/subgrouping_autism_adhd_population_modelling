@@ -82,9 +82,21 @@ preprocess_data <- function (csv_file, patient, min_age = NULL, max_age = NULL ,
 ################## START OF FUNCTION ###################
 
 #Function to carry out tSNE or UMAP dimensionality reduction and clustering with respect to first two embeddings. 
-#Input: data frame of only features, method = 'tsne' or 'umap' to decide on dimensionality reduction type
+#Input: data frame of only ID + features, method = 'tsne' or 'umap' to decide on dimensionality reduction type
 #Output: first two embedding, cluster assignment 
-tsne_k_medoids <- function(data, method){
+#If run_all is TRUE -> clustering is run for all clusters k = 1 to 10 // otherwise only output results for ideal clustering
+tsne_k_medoids <- function(data, method, results_dir, run_all =FALSE){
+  
+  #Name of column with optimal clustering
+  optimal_column <- paste0('cluster_', method)
+  
+  #Select features from data
+  data<- feature_data %>%
+    select(contains('.q.wre'))
+  
+  #Select the ID from the input data
+  clustering_data_frame <- feature_data%>%
+    select(ID)
   
   #Apply dimensionality reduction
   if (method =='tsne'){
@@ -101,25 +113,79 @@ tsne_k_medoids <- function(data, method){
     return ()
   }
 
+  #Add embeddings to output data frame
+  clustering_data_frame <- clustering_data_frame%>%
+    mutate(embeddings_1 = embeddings[,1 ])%>%
+    mutate(embeddings_2 = embeddings[,2])
+  
   # extract the distance matrix from the dimensionality reduction
   t.dist <- as.matrix(dist(embeddings))
+
+  #Run for all clustering solutions
+  if (run_all ==TRUE){
+    
+    #Create empty vector to store all Silhouette scores
+    criterion <-numeric(10)
+    
+    #Run clustering for all clusters from k = 1 to k + 10
+    for (i in 2:10){
+      
+      #Find pam object 
+      pam_value<- pam(t.dist, i)
+      
+      print(paste('cluster ', i, 'silhoutte score ', pam_value$silinfo$avg.width))
+      current_column <- paste0('cluster_', i)
+      
+      #Add clustering to
+      clustering_data_frame <- clustering_data_frame%>%
+        mutate(!!current_column := pam_value$clustering)
+      
+      #Append Silhouette score to criterion vector
+      criterion[i] <- pam_value$silinfo$avg.width
+     
+      }
+    
+    #Find clustering with highest silhouette score 
+    best_cluster <- paste0('cluster_', which.max(criterion))
+    print(paste('Best cluster number: ', best_cluster))
+    clustering_data_frame <- clustering_data_frame%>%
+      mutate(!!optimal_column := clustering_data_frame[[best_cluster]])
   
-  # run partitioning around medoids with silhouette estimation to get the number of optimal clusters
-  print('Finding optimal number of clusters ....')
-  pamk.best <- pamk(t.dist, critout = TRUE)
   
-  criterion <- pamk.best$crit
-  # run PAM with that number of clusters
-  print('Running partitioning around medoids...')
+  }
   
-  pam.res <- pamk.best$pamobject
-  #pam.res <- pam(t.dist, pamk.best$nc)
+  if (run_all ==FALSE){
+    #Only run the clustering for the highest silhouette score 
+    
+    # run partitioning around medoids with silhouette estimation to get the number of optimal clusters
+    print('Finding optimal number of clusters ....')
+    pamk.best <- pamk(t.dist, critout = TRUE)
+    
+    criterion <- pamk.best$crit
+    # run PAM with that number of clusters
+    print('Running partitioning around medoids...')
+    
+    #Select optimum clustering
+    pam.res <- pamk.best$pamobject
+    
+    #Concatenate ID with embeddings and clustering
+    clustering_data_frame <- clustering_data_frame%>%
+      mutate(!!optimal_column := pam.res$clustering)
+    }
   
-  # put the cluster in a separate variable
-  groups <- as.data.frame(pamk.best$pamobject$clustering)
-  groups <- as.data.frame(pam.res$clustering)
+  #Save criterion params
+  criterion_save <- file.path(results_dir, 'criterion.csv')
+  write.csv(criterion, criterion_save, row.names=FALSE)
   
-  return(list(embeddings, groups, criterion))
+  #Write output data
+  write_csv(clustering_data_frame, file.path(results_dir, paste0(method, '_medoids_clustering.csv')))
+  
+  #Create plot of embeddings coloured by clustering
+  filename <- file.path(results_dir, paste0(method, '_medoids_plot.png'))
+  ggplot(clustering_data_frame, aes (x = embeddings_1, y = embeddings_2, color = !!sym(optimal_column))) +
+    geom_point() + scale_color_gradient(low = "blue", high = "red") 
+  
+  ggsave(filename)
   
 }
 
@@ -247,7 +313,7 @@ find_sig_features <- function(results_dir, data_used, clinical_features, non_cli
 
 
 ###########START OF FUNCTION ######################
-#Concatenate features used in clustering with all clincal and non clinical features for analysis
+#Concatenate features used in clustering with all clinical and non clinical features for analysis
 append_all_features <- function(data_used){
   
   #Load all clinical data
