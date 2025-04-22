@@ -13,11 +13,11 @@ thresh <- 0.01
 
   
 #Load .csv used in clustering
-data_used_dir <- file.path('data/ASD_ADHD_global.csv')# '/your/path/here/' # <-- EDIT THIS PATH
+data_used_dir <-  '/your/path/here/' # <-- EDIT THIS PATH
 data_used <- read_csv(data_used_dir)
 
 #Specify file where HYDRA output (in format .mat) is found
-results_dir <- file.path('results/sept_results/ASD_ADHD_global_sept/') #"/your/path/here/"  # <-- EDIT THIS PATH
+results_dir <- "/your/path/here/"  # <-- EDIT THIS PATH
 method = 'umap'
 
 #Directory to save results
