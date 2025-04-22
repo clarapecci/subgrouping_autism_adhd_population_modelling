@@ -8,14 +8,15 @@ library(ggfittext)
 source('util.R')
 
 
-#Data used for clustering 
-data_used<-read_csv("data/ASD_ADHD_global.csv")
+#Load .csv used in clustering
+data_used_dir <-  '/your/path/here/' # <-- EDIT THIS PATH
+data_used <- read_csv(data_used_dir)
 
-#Directory where clustering assignments is saved
-results_dir <- "results/sept_results/ASD_ADHD_global_sept/"
+#Specify file where clustered data is saved
+results_dir <- "/your/path/here/"  # <-- EDIT THIS PATH
 
 #Specify directory to save new plots
-saving_dir <-file.path(results_dir, 'comparisons_new_plots_2025')
+saving_dir <-file.path(results_dir, 'comparisons_plots')
 
 #Create directory to save results
 if (!file.exists(saving_dir)){
