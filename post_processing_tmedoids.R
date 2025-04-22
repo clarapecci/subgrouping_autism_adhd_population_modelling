@@ -3,12 +3,13 @@ library(tidyverse)
 
 source('util.R')
 
-### TO CHANGE BETWEEN umap <-> umap, replace words in script
+### TO CHANGE BETWEEN umap <-> tsne, replace words in script
 
 
 #### LOAD FILE USED IN CLUSTERING!!
-data_used<-read_csv("data/ASD_ADHD_all.csv")
-results_dir <- "results/ASD_ADHD_all/umap_medoids/control_FALSE"
+data_used<-read_csv("data/ADHD_adjusted_regional_data.csv")
+results_dir <- "results/sept_results/ADHD_only_regional_all_sept/umap_medoids/run_all/control_FALSE/1"
+saving_dir <- file.path(results_dir)
 
 #### LOAD CLUSTERED DATA
 clustered_data <- read_csv(file.path(results_dir, "umap_medoids_clustering.csv"))
@@ -46,10 +47,11 @@ umap_feature_data <- data_used %>%
   filter(dx.original !='CN')
 
 #Run feature analysis
-#feature_analysis(umap_feature_data, results_dir)
+feature_analysis(umap_feature_data, saving_dir)
 
 ##Check significant features!
 #Specify folder to check
-cluster_dir <- file.path(results_dir, 'cluster')
+cluster_dir <- file.path(saving_dir, 'cluster')
 #Find type of significant features
 find_sig_features(cluster_dir, data_used, clinical_features, non_clinical_features )
+

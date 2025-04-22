@@ -85,7 +85,7 @@ preprocess_data <- function (csv_file, patient, min_age = NULL, max_age = NULL ,
 #Input: data frame of only ID + features, method = 'tsne' or 'umap' to decide on dimensionality reduction type
 #Output: first two embedding, cluster assignment 
 #If run_all is TRUE -> clustering is run for all clusters k = 1 to 10 // otherwise only output results for ideal clustering
-tsne_k_medoids <- function(data, method, results_dir, run_all =FALSE){
+k_medoids_clustering <- function(data, method, results_dir, run_all =FALSE){
   
   #Name of column with optimal clustering
   optimal_column <- paste0('cluster_', method)
@@ -174,6 +174,9 @@ tsne_k_medoids <- function(data, method, results_dir, run_all =FALSE){
     }
   
   #Save criterion params
+  if (!is.null(results_dir)){
+  
+  print(paste('Saving results to ', results_dir))
   criterion_save <- file.path(results_dir, 'criterion.csv')
   write.csv(criterion, criterion_save, row.names=FALSE)
   
@@ -186,7 +189,7 @@ tsne_k_medoids <- function(data, method, results_dir, run_all =FALSE){
     geom_point() + scale_color_gradient(low = "blue", high = "red") 
   
   ggsave(filename)
-  
+  }
 }
 
 ############## END OF FUNCTION #####################
@@ -207,7 +210,7 @@ feature_analysis <- function(clustered_data_frame, results_directory){
     select(-c(ID, group), -contains('cluster'))  %>%
     colnames()
   
-  
+  print(cluster_list)
   #Create directory to save figures
   if (!file.exists(results_directory)){ 
     dir.create(results_directory)
@@ -215,7 +218,7 @@ feature_analysis <- function(clustered_data_frame, results_directory){
   
   #Iterate over number of clusters
   for (x in cluster_list){
-    
+    print(x)
     #Create file directory for given cluster
     cluster_dir <- file.path(results_directory, x)
     if (!file.exists(cluster_dir)){
@@ -231,14 +234,14 @@ feature_analysis <- function(clustered_data_frame, results_directory){
         next
       }
       
-      if (i =='sex'|i =='site' | (i =='dx.original' & nlevels(factor(clustered_data_frame$dx.original))>1 )){
+      if (i =='sex'|i =='site' | (i =='dx.original' && nlevels(factor(clustered_data_frame$dx.original))>1 )){
         
         stat_test <- chisq.test(clustered_data_frame[[i]], clustered_data_frame[[x]])
         ggplot(clustered_data_frame, aes(fill=.data[[i]], x = .data[[x]])) +
           geom_bar(position="dodge", stat="count") +
           ggtitle(paste('X^2', stat_test$statistic, 'p value ', round(stat_test$p.value, digits = 6)))
         
-      }else{
+      }else if (i !='sex'&& i !='site' && i !='dx.original'){
 
       #Carry out statistical test according to variable type
       stat_test <- kruskal.test(clustered_data_frame[[i]] ~clustered_data_frame[[x]],  data = clustered_data_frame)
@@ -246,14 +249,14 @@ feature_analysis <- function(clustered_data_frame, results_directory){
              aes(x = factor(.data[[x]]), y = .data[[i]])) +
         xlab('Clusters') +
         geom_boxplot() +
-        geom_point(aes(color = GMVTransformed.q.wre), position = 'jitter') +  scale_color_gradient(low = "blue", high = "red")  + 
+        geom_point(aes(color = .data[[i]]), position = 'jitter') +  scale_color_gradient(low = "blue", high = "red")  + 
         ggtitle('p value ', stat_test$p.value)
       
       }
       
       
       #If p value is significant, include 'significant' directory
-      if (!is.na(stat_test$p.value) & stat_test$p.value < 0.005){
+      if (!is.na(stat_test$p.value) & stat_test$p.value < 0.05){
         saving_dir <- file.path(cluster_dir, "sig")
       } else{
         saving_dir <- cluster_dir
@@ -331,7 +334,7 @@ append_all_features <- function(data_used){
   #Extract non clinical features not used in clustering
   non_clinical_features <- all_features_data %>% 
     filter(ID %in% used_ID) %>%
-    select(site, age, sex, IQ, dx.original)
+    select(site, age, sex, IQ, dx.original, FSQC)
   
   #Append features
   combined_data <- data_used %>%
