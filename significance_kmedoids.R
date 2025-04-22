@@ -5,72 +5,70 @@ library(perm)
 library("dplyr")
 library(effsize)
 source('util.R')
-
-
 #Specify parameters of permutation
 perm.opt <- permControl(nmc=5000,seed=123451, setSEED = TRUE)
 
-#For the optimal clustering solution -> calculates differences in features (centiles and clinical) between subgroups and controls
+#For the optimal clustering -> calculates significance with respect to control!
+thresh <- 0.01
 
+  
 #Load .csv used in clustering
-data_used_dir <- '/your/path/here/' # <-- EDIT THIS PATH
+data_used_dir <- file.path('data/ASD_ADHD_global.csv')# '/your/path/here/' # <-- EDIT THIS PATH
 data_used <- read_csv(data_used_dir)
 
 #Specify file where HYDRA output (in format .mat) is found
-results_dir <- #"/your/path/here/"  # <-- EDIT THIS PATH
-
-method = 'HYDRA'
+results_dir <- file.path('results/sept_results/ASD_ADHD_global_sept/') #"/your/path/here/"  # <-- EDIT THIS PATH
+method = 'umap'
 
 #Directory to save results
-main_dir <- file.path(results_dir, paste0('FDRcorrected_perm_', method))
+main_dir <- file.path(results_dir, paste0('FDRcorrected_perm2025_', method))
 if (!file.exists(main_dir)){
   dir.create(main_dir, recursive = TRUE)
 }
 
 
 ######### MAIN SCRIPT
-#Set significance threshold 
-thresh <- 0.01
 
-#Combine all clinical features with data used to cluster
+#Combine all clinical features with data
 combined_data <- append_all_features(data_used)
 
-#Load clustered data
+#Select optimal cluster to add to combined data - optimal cluster is saved in csv as cluster_umap or cluster_tsne
+optimal_cluster = paste0('cluster_', method)
+
 #Open mat file in results directory
-clustered_data<- readMat(list.files(results_dir, pattern = "\\.mat$", full.names = TRUE))
+loaded_clustered_data<- read_csv(file.path(results_dir, paste0(method,'_medoids'), 'run_all', 'control_FALSE', '1', paste0(method, '_medoids_clustering.csv'))) 
 
-#Check significant features of optimal cluster!
-highest_ARI_cluster <- which.max(clustered_data$ARI)
+#Merge clustered data to combined data via the ID column
+combined_data <- merge(combined_data, loaded_clustered_data, by = 'ID', all.x = TRUE)
 
-#Combine all features with clustered results
-combined_data <- combined_data %>%
-  mutate(cluster_assignment = clustered_data$CIDX[, highest_ARI_cluster])
-
+#Change column name to cluster_assignment (used later in the code)
+names(combined_data) <- sub(optimal_cluster, 'cluster_assignment', names(combined_data))
 
 #List of clusters  
 clusters <- levels(factor(combined_data$cluster_assignment))
 
-#Specify list of features to calculate significance - EDIT THIS depending on what features you want to analyse
+#Add controls
+combined_data$cluster_assignment[is.na(combined_data$cluster_assignment)] <- -1
+
+
+#Obtain list of features - EDIT THIS depending on what features you want to analyse
 feature_columns <- combined_data %>%
   select(contains('.q.wre'))  %>%
   colnames()
 
 
-###### CARRY OUT FEATURE ANALYSIS
-
 #Remove control group from list of clusters
-clusters <- clusters[clusters!='-1']
+clusters <- clusters[clusters!='-1']  
 
 #Create empty dataframe to store Cohen's d
-cohend_df <- data.frame(matrix( nrow = length(feature_columns), ncol = 5))
-colnames(cohend_df)<-c('features', 'control_1', 'p_control_1', 'control_2', 'p_control_2')
+cohend_df <- data.frame(matrix( nrow = length(feature_columns), ncol = 7))
+colnames(cohend_df)<-c('features', 'control_1', 'p_control_1', 'control_2', 'p_control_2', 'cluster1_cluster2', 'p_cluster1_cluster2')
 cohend_df[1] <- feature_columns
 
 ########START LOOP ###########
 
 
 #Iterate over clusters and control
-
 for (cluster in clusters){
 
 
@@ -117,7 +115,7 @@ for (cluster in clusters){
       ggtitle('p value ', round(stat_test$p.value, digits = 6))
     }
     #If p value is significant, include 'significant' directory
-    if (!is.na(stat_test$p.value) & stat_test$p.value < 0.005){
+    if (!is.na(stat_test$p.value) & stat_test$p.value < thresh){
       saving_dir <- file.path(cluster_dir, "sig")
     } else{
       saving_dir <- cluster_dir
@@ -130,30 +128,27 @@ for (cluster in clusters){
     ggsave(filename, create.dir = TRUE)
 
     #Find Cohen's d - The first argument is the reference group, and the second argument is the comparison group
+
     if (i !='sex'&& i !='site' && i !='dx.original'){
 
     find_d <- effsize::cohen.d(data_to_analyse[[i]][data_to_analyse$cluster_assignment==cluster], data_to_analyse[[i]][data_to_analyse$cluster_assignment==-1])
 
     #Find corresponding row and column where d value should be saved
     cohend_df[which(cohend_df$features == i), current_column] <- find_d$estimate
-    p_column <- paste0('p_control_', cluster)
-    cohend_df[which(cohend_df$features == i), p_column] <- stat_test$p.value
-
-
+      p_column <- paste0('p_control_', cluster)
+      cohend_df[which(cohend_df$features == i), p_column] <- stat_test$p.value
     }
 
   }
 
 
 }
+if (length(clusters) == 2){
 
-
-#If two clusters -> check against each other
-if (highest_ARI_cluster == 2){
-
-  #Select only control and given cluster
+  #Remove controls
   no_control <- combined_data %>%
-    filter(cluster_assignment != '-1')
+    filter(dx.original != 'CN')
+
 
   #Create directory to save
   cluster_dir <- file.path(main_dir, 'cluster1_cluster2')
@@ -165,13 +160,12 @@ if (highest_ARI_cluster == 2){
   for (i in feature_columns){
 
     #If entire column is NA - skip
-    if (all(is.na(combined_data[[i]]))){
+    if (all(is.na(no_control[[i]]))){
       next
     }
 
     #Remove NA in given feature
-    data_to_analyse <- combined_data[!is.na(combined_data[[i]]), ]%>%
-      filter(cluster_assignment != -1)
+    data_to_analyse <- no_control[!is.na(no_control[[i]]), ]
 
     if (i =='sex'|i =='site' | (i =='dx.original' && nlevels(factor(data_to_analyse$dx.original))>1 )){
 
@@ -183,21 +177,22 @@ if (highest_ARI_cluster == 2){
 
     }else if (i !='sex'&& i !='site' && i !='dx.original'){
 
-       #Perform permutation test with clinical features
+      #Perform permutation test with clinical features
       stat_test <-  permTS(data_to_analyse[[i]][data_to_analyse$cluster_assignment==1], data_to_analyse[[i]][data_to_analyse$cluster_assignment==2], paired=FALSE, alternative="two.sided", method ="exact.mc", control = perm.opt)
-    ggplot(data_to_analyse,
-           aes(x = factor(cluster_assignment), y = .data[[i]])) +
-      xlab('Clusters') +
-      geom_boxplot() +
-      geom_point(aes(color =.data[[i]]),  position = position_jitter(width = 0.2), alpha = 0.5) +
-      scale_color_gradient(low = "blue", high = "red")  +
-      ggtitle('p value ', round(stat_test$p.value, digits = 6))
+      ggplot(data_to_analyse,
+             aes(x = factor(cluster_assignment), y = .data[[i]])) +
+        xlab('Clusters') +
+        geom_boxplot() +
+        geom_point(aes(color =.data[[i]]),  position = position_jitter(width = 0.2), alpha = 0.5) +
+        scale_color_gradient(low = "blue", high = "red")  +
+        ggtitle('p value ', round(stat_test$p.value, digits = 6))
 
-       #Calculate Cohen's d
+      #Calculate Cohen's d
       find_d <- effsize::cohen.d(data_to_analyse[[i]][data_to_analyse$cluster_assignment==2], data_to_analyse[[i]][data_to_analyse$cluster_assignment==1])
       cohend_df[which(cohend_df$features == i), current_column] <- find_d$estimate
+
+      #Add p value
       cohend_df[which(cohend_df$features == i), 'p_cluster1_cluster2'] <- stat_test$p.value
-    }
 
     #If p value is significant, include 'significant' directory
     if (!is.na(stat_test$p.value) & stat_test$p.value < thresh){
@@ -206,19 +201,14 @@ if (highest_ARI_cluster == 2){
       saving_dir <- cluster_dir
     }
 
+    }
     # #Attach feature name to saving directory
     filename <- file.path(saving_dir, paste(i, ".png", sep =""))
-
+    
     #Create plot
     ggsave(filename, create.dir = TRUE)
-
-
-
+  }
 }
-
-
-}
-
 
 #FDR correction
 
@@ -238,8 +228,7 @@ for (col in p_columns) {
 
 
 #Save Cohen's d csv
-write_csv(cohend_df, file.path(main_dir, 'Cohens_d.csv'))
-
+write_csv(cohend_df, file.path(main_dir, 'Cohens_d_test.csv'))
 
 
 
@@ -299,9 +288,9 @@ for (i in features_for_table){
     stat_test_control <-  kruskal.test(data_to_use[[i]] ~ control_v_all, data = data_to_use)
     stat_test_group <- kruskal.test(no_control[[i]] ~ cluster_assignment, data = no_control)
     
-    }
-    
- 
+  }
+  
+  
   #Save p values
   table_df[which(table_df$features == i), 'control_pvalue'] <- stat_test_control$p.value #format(signif(stat_test_control$p.value, 4), scientific = TRUE)
   table_df[which(table_df$features == i), 'subtypes_pvalue'] <- stat_test_group$p.value #format(signif(stat_test_group$p.value, 4), scientific = TRUE)
